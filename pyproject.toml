@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "param-shrink"
+version = "1.0.0"
+description = "Parameter shrinking via Fourier features"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Kapil Dhinwa", email = "kapildhinwa2010@gmail.com"}
+]
+keywords = ["parameter-compression", "fourier", "neural-networks", "pytorch", "deep-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: Pytorch",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/kapildhinwa2010-dev/ParamShrink"
+Documentation = "https://github.com/kapildhinwa2010-dev/ParamShrink#readme"
+Repository = "https://github.com/kapildhinwa2010-dev/ParamShrink.git"
+Issues = "https://github.com/kapildhinwa2010-dev/ParamShrink/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["param_shrink*"]
