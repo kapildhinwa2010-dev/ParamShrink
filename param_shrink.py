@@ -136,15 +136,22 @@ class ParamShrink(nn.Module):
         device: torch.device
     ) -> torch.Tensor:
         """Generate weight matrix with chunked processing"""
-        W = torch.zeros(out_dim, in_dim, device=device)
-        
-        chunk_rows = min(self.chunk_size // in_dim, out_dim)
-        for start in range(0, out_dim, chunk_rows):
-            end = min(start + chunk_rows, out_dim)
-            chunk = self._generate_weight_matrix(end - start, in_dim, device)
-            W[start:end, :] = chunk
-        
-        return W
+        row_values = torch.linspace(-1, 1, out_dim, device=device)
+        col_values = torch.linspace(-1, 1, in_dim, device=device)
+        outputs = []
+        total = out_dim * in_dim
+
+        for start in range(0, total, self.chunk_size):
+            flat = torch.arange(start, min(start + self.chunk_size, total), device=device)
+            rows = torch.div(flat, in_dim, rounding_mode="floor")
+            cols = flat.remainder(in_dim)
+            coords = torch.stack((row_values[rows], col_values[cols]), dim=1)
+            features = self._generate_fourier_features(coords)
+            outputs.append(self.net(features).squeeze(-1))
+
+        raw_weights = torch.cat(outputs).reshape(out_dim, in_dim)
+        xavier_scale = (2.0 / (in_dim + out_dim)) ** 0.5
+        return raw_weights * self.scale * xavier_scale
     
     def compress(
         self,
@@ -198,18 +205,27 @@ class ParamShrink(nn.Module):
         Returns:
             Reconstructed state dictionary
         """
-        # Load compressed parameters
-        self.B.data = compressed['B']
-        self.scale.data = compressed['scale']
+        # Load compressed parameters without replacing registered buffers or Parameters.
+        with torch.no_grad():
+            self.B.copy_(compressed['B'].to(device=self.B.device, dtype=self.B.dtype))
+            self.scale.copy_(compressed['scale'].to(device=self.scale.device, dtype=self.scale.dtype))
         
         # Load network weights
         for key, value in compressed['net'].items():
             if key.endswith('_weight'):
                 layer_idx = int(key.split('_')[1])
-                self.net[layer_idx * 2].weight.data = value
+                layer = self.net[layer_idx]
+                if not isinstance(layer, nn.Linear):
+                    raise ValueError(f"Compressed state refers to non-linear layer index {layer_idx}")
+                with torch.no_grad():
+                    layer.weight.copy_(value.to(device=layer.weight.device, dtype=layer.weight.dtype))
             elif key.endswith('_bias'):
                 layer_idx = int(key.split('_')[1])
-                self.net[layer_idx * 2].bias.data = value
+                layer = self.net[layer_idx]
+                if not isinstance(layer, nn.Linear) or layer.bias is None:
+                    raise ValueError(f"Compressed state refers to a layer without bias at index {layer_idx}")
+                with torch.no_grad():
+                    layer.bias.copy_(value.to(device=layer.bias.device, dtype=layer.bias.dtype))
         
         # Generate weights for each target
         reconstructed = {}
