@@ -158,10 +158,13 @@ class ParamShrink(nn.Module):
         state_dict: Dict[str, torch.Tensor]
     ) -> Dict[str, Any]:
         """
-        Compress a model's state dict.
+        Save the shrink network's own parameters.
         
-        This extracts the essential parameters from the shrink network
-        which can be used to reconstruct any weight matrix.
+        NOTE (honest limitation): this does NOT fit the shrink network to
+        the given state_dict. decode() reconstructs weights from the
+        network's current prior - not from the original weights. To
+        actually compress a specific model, the network must first be
+        trained to fit that model's weights.
         
         Args:
             state_dict: Model state dictionary
