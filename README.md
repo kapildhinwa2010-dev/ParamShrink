@@ -1,62 +1,54 @@
 # ParamShrink
 
-[![CI](https://github.com/kapildhinwa2010-dev/ParamShrink/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/ParamShrink/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/kapildhinwa2010-dev/ParamShrink/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/ParamShrink/actions/workflows/codeql.yml)
+ParamShrink is an experimental PyTorch module for generating two-dimensional weight matrices from Fourier features and a small trainable neural network. Despite its name and compression-oriented API, the current implementation does not fit that generator to a model's supplied weights, so it does not yet perform faithful model compression or restoration.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+## Status
 
-Fourier-feature parameterization that replaces weight matrices with a small generator network.
+The repository contains a working weight-generation module, a wrapper, and unit tests. It is not a complete or validated model-compression workflow: there is no fitting/training routine for target model weights, and no reconstruction-quality or task-accuracy evaluation is included. The project metadata labels the release as Beta.
 
-## What it does
+## Implemented
 
-ParamShrink maps 2D coordinate grids through random Fourier features and
-a 3-layer SiLU MLP with a trainable scale, generating weight matrices
-from roughly 10K generator parameters. compress()/decompress() wrap a
-full PyTorch state dict.
+- `ParamShrink` maps a two-coordinate grid through fixed random Fourier projections, sine/cosine features, and a trainable SiLU multilayer perceptron to generate 2D weight matrices. Large matrices are processed in chunks.
+- `compress()` serializes the shrinker's Fourier buffer, scale, network weights, and configuration. `decompress()` loads those generator values and generates tensors for supplied target shapes: matrices for 2D shapes and zero-filled vectors for 1D shapes.
+- `shrink_model()` / `restore_model()` and `ParamShrinkWrapper` wrap that serialization and shape-based generation; they do not load a restored state dictionary into a model.
+- `count_parameters()`, `get_compression_ratio()`, a configuration dataclass, and a factory function are provided.
 
-## Installation
+## Important limitations
 
-    pip install torch numpy pytest
+- `compress(state_dict)` does not use or fit to `state_dict`. The returned data represents the shrinker's current generator, not the source model's weights. As the source docstring notes, useful reconstruction would first require training the generator to fit those weights; that fitting process is not implemented.
+- `compression_ratio` is stored and reported as a setting but does not change the generator architecture or perform compression.
+- Restoration handles only 2D matrices and 1D vectors. Other target ranks are skipped, and 1D outputs are zeros rather than learned model biases.
+- `restore_model()` returns a dictionary of generated tensors, not a restored model or a quality-checked checkpoint.
+- The repository's `pyproject.toml` declares package metadata, but a wheel built from the current source was verified to contain no `param_shrink.py` module. Installing the built distribution therefore does not provide the importable implementation; use the source checkout until packaging is corrected.
+- In a local run of the included example, the example model had 40,300 parameters and the reported shrinker state had 49,794 parameters, for a displayed ratio of 0.8×. This is a parameter-count comparison, not a reconstruction benchmark, and in this example the generator has more parameters than the source model.
+- No reconstruction-error, downstream accuracy, memory, or speed measurements are provided.
 
-## Usage
+## Use from a source checkout
 
-    from param_shrink import ParamShrinkWrapper
+Requires Python 3.10 or later, PyTorch 2.0 or later, and NumPy 1.24 or later. From the repository root, install the listed dependencies and run the included demonstration:
 
-    wrapper = ParamShrinkWrapper()
-    compressed = wrapper.shrink(model)
-    restored = wrapper.restore(compressed)
-    model.load_state_dict(restored)
+```bash
+python -m pip install -r requirements.txt
+python param_shrink.py
+```
 
-## API
+The demonstration exercises weight generation and the wrapper's serialization path; it does not train the generator or demonstrate accurate weight reconstruction. The module can also be imported from the checkout, for example:
 
-- ParamShrink(num_freqs=64, hidden_size=128, compression_ratio=10.0,
-  chunk_size=16384): compress, decompress, shrink_model, restore_model,
-  count_parameters, get_compression_ratio
-- ParamShrinkWrapper / ParamShrinkConfig: shrink, restore
-- create_param_shrink(...) factory
+```python
+import torch
+from param_shrink import ParamShrink
 
-## Honest results and limitations
+shrinker = ParamShrink(num_freqs=64, hidden_size=128)
+weight = shrinker._generate_weight_matrix(100, 100)
+print(weight.shape)
+```
 
-- The ratio table (10x to 10,000x) is parameter arithmetic only. No
-  reconstruction-error or task-accuracy measurement backs it.
-- Without fitting the generator to actual trained weights, decompress
-  returns a smooth approximation - useful weights require per-matrix
-  optimization, which is the real cost.
-- compression_ratio is a config knob that controls generator sizing,
-  not a measured outcome.
-- No fine-tuning pipeline is included; accuracy after shrink+restore is
-  unmeasured.
+`_generate_weight_matrix` is an internal method; the repository does not currently expose a stable high-level API for fitting or faithfully compressing a model.
 
-## Negative results (from the source experiments)
+## Tests and CI
 
-- The reserv.dean-part-2 log records that Fourier-parameterized
-  reconstructions of trained weights were not acceptable without
-  per-layer training, and the related carrier-mode recall failed about
-  half of noise trials. The robust design kept in the toolkit is the
-  Reed-Solomon slot lattice (ECC-Memory).
+On the cloned repository commit, `python3 -m pytest -q` completed with **24 passed**. The included `param_shrink.py` demonstration also ran successfully; its output reported the 0.8× parameter-count ratio noted above. The GitHub Actions workflow is configured to run pytest and a compile/smoke check on Python 3.10, 3.11, and 3.12. A remote CI run result was not verified for this commit.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE).
